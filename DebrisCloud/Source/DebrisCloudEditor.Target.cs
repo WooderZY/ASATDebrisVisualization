@@ -19,7 +19,7 @@ public class DebrisCloudEditorTarget : TargetRules
 	public DebrisCloudEditorTarget( TargetInfo Target) : base(Target)
 	{
 		Type = TargetType.Editor;
-		DefaultBuildSettings = BuildSettingsVersion.V2;
+		DefaultBuildSettings = BuildSettingsVersion.Latest;
 		ExtraModuleNames.AddRange( new string[] { "DebrisCloud" } );
 
         ExtraModuleNames.AddRange(new string[] { "Spice", "SpiceEditor", "SpiceUncooked" });

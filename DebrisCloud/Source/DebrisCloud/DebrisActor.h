@@ -51,7 +51,10 @@ public:
     // 1982-092A = COSMOS 1408 DEB
 	// 1999-025A = FENGYUN 1C DEB
     UPROPERTY(EditAnywhere, BlueprintReadOnly)
-    FString ObjectId = TEXT("1999-025A"); 
+    FString ObjectId = TEXT(""); 
+
+    UPROPERTY(EditAnywhere, BlueprintReadOnly)
+    FString ObjectName = TEXT(""); 
 
     UPROPERTY(EditAnywhere, BlueprintReadOnly)
     bool UseTestUrl = true;
@@ -87,7 +90,8 @@ public:
 	virtual void Tick(float DeltaTime) override;
 
 protected:
-	void LoginWithSpaceTrack(const FString& NewObjectId, const FString& NewUser, const FString& NewPassword);
+	void LoginWithSpaceTrack(const FString& NewUser, const FString& NewPassword);
+    void QueryDataFromSpaceTrack(FString CookieHeader, FString uriQuery);
     void ProcessSpaceTrackResponse(const FString& ResponseContent);
     void ProcessSpaceTrackResponse(const TArray<TSharedPtr<FJsonValue>>& JsonResponseArray);
     void SpaceTrackBeginResponse();

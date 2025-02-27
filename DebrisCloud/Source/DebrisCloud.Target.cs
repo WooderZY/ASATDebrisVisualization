@@ -24,13 +24,13 @@ public class DebrisCloudTarget : TargetRules
     // MaxQ GitHub
     // https://github.com/Gamergenic1/MaxQ
 
-    public const string RelativePathToCSpiceToolkit = "Source\\MaxQ\\CSpice_Library\\cspice\\";
-    public const string RelativePathToCSpiceLib = "Source\\MaxQ\\CSpice_Library\\lib\\Win64\\cspice.lib"; 
+    public const string RelativePathToCSpiceToolkit = "Plugins\\MaxQ\\Source\\ThirdParty\\CSpice_Library\\cspice\\";
+    public const string RelativePathToCSpiceLibraries = "Plugins\\MaxQ\\Source\\ThirdParty\\CSpice_Library\\lib\\Win64\\cspice.lib"; 
     
     public DebrisCloudTarget( TargetInfo Target) : base(Target)
 	{
 		Type = TargetType.Game;
-		DefaultBuildSettings = BuildSettingsVersion.V2;
+		DefaultBuildSettings = BuildSettingsVersion.Latest;
 		ExtraModuleNames.AddRange( new string[] { "DebrisCloud" } );
 
         ExtraModuleNames.AddRange(new string[] { "Spice" });
@@ -38,9 +38,23 @@ public class DebrisCloudTarget : TargetRules
         BuildCSpiceLib(this);
     }
 
+    static public string CSpiceLibPath(ReadOnlyTargetRules targetRules)
+    {
+        string libName = "/cspice.lib";
+
+        if (targetRules.Platform == UnrealTargetPlatform.Mac)
+        {
+            libName = "/cspice.a";
+        }
+
+        string relativePathToCSpiceLib = RelativePathToCSpiceLibraries + targetRules.Platform.ToString() + libName;
+
+        return Path.Combine(targetRules.ProjectFile.Directory.FullName, relativePathToCSpiceLib);
+    }
+
     static public void BuildCSpiceLib(TargetRules targetRules)
     {
-        string pathToCSpiceLib = CSpice_Library.CSpiceLibPath(new ReadOnlyTargetRules(targetRules));
+        string pathToCSpiceLib = CSpiceLibPath(new ReadOnlyTargetRules(targetRules));
 
         if (!File.Exists(pathToCSpiceLib))
         {

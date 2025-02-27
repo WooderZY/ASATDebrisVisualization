@@ -41,7 +41,7 @@ void ADebrisActor::BeginPlay()
     UMaterialInstanceDynamic* MaterialInstance = InstancedMesh->CreateDynamicMaterialInstance(0, DebrisMaterial);
     MaterialInstance->SetVectorParameterValue("DebrisColor", DebrisColor);
    
-    LoginWithSpaceTrack(ObjectId, SpaceTrackUser, SpaceTrackPassword);
+    LoginWithSpaceTrack(SpaceTrackUser, SpaceTrackPassword);
     
     TActorIterator<AActor> Iterator(GetWorld(), AEarthActor::StaticClass());
     for ( ; Iterator; ++Iterator)
@@ -72,12 +72,27 @@ void ADebrisActor::BeginPlay()
 // If you're building a client that makes use of data in some way, do NOT allow the
 // client to directly connect.  It's against the user agreement.   You would instead
 // need to read and cache data from your own server, and connect your client to it.
-void ADebrisActor::LoginWithSpaceTrack(const FString& NewObjectId, const FString& NewUser, const FString& NewPassword)
+void ADebrisActor::LoginWithSpaceTrack(const FString& NewUser, const FString& NewPassword)
 {
     FString uriBase = LIVE_URL_BASE;
     FString uriLogin = uriBase + TEXT("/ajaxauth/login");
 
-    FString uriQuery = uriBase + TEXT("/basicspacedata/query/class/gp/OBJECT_ID/~~") + NewObjectId + TEXT("/orderby/DECAY_DATE%20desc/emptyresult/show");
+    FString uriQuery;
+    if (!ObjectId.IsEmpty())
+    {
+        uriQuery = uriBase + TEXT("/basicspacedata/query/class/gp/OBJECT_ID/~~") + ObjectId + TEXT("/orderby/DECAY_DATE%20desc/emptyresult/show");
+    }
+	else if (!ObjectName.IsEmpty())
+	{
+		uriQuery = uriBase + TEXT("/basicspacedata/query/class/gp/OBJECT_NAME/~~") + TEXT("%25") + ObjectName + TEXT("%25") + TEXT("/orderby/DECAY_DATE%20desc/emptyresult/show");
+	}
+	else
+	{
+		UE_LOG(LogTemp, Error, TEXT("No Object ID or Name specified"));
+        return;
+	}
+    
+   
 
     FHttpModule& httpModule = FHttpModule::Get();
 
@@ -92,7 +107,7 @@ void ADebrisActor::LoginWithSpaceTrack(const FString& NewObjectId, const FString
         pRequest->SetVerb(TEXT("POST"));
         pRequest->SetHeader(TEXT("Content-Type"), TEXT("application/x-www-form-urlencoded"));
 
-        RequestContent = TEXT("identity=") + NewUser + TEXT("&password=") + NewPassword + TEXT("&query=") + uriQuery;
+        RequestContent = TEXT("identity=") + NewUser + TEXT("&password=") + NewPassword;//+ TEXT("&query=") + uriQuery;
         pRequest->SetContentAsString(RequestContent);
     }
     else
@@ -105,15 +120,23 @@ void ADebrisActor::LoginWithSpaceTrack(const FString& NewObjectId, const FString
     pRequest->SetURL(uriLogin);
 
     pRequest->OnProcessRequestComplete().BindLambda(
-        [&](
+        [&, uriQuery](
             FHttpRequestPtr pRequest,
             FHttpResponsePtr pResponse,
             bool connectedSuccessfully) mutable {
 
         if (connectedSuccessfully) {
             UE_LOG(LogTemp, Log, TEXT("Space-Track response: %s"),*(pResponse->GetContentAsString().Left(64)));
-
-            ProcessSpaceTrackResponse(pResponse->GetContentAsString());
+            if (!UseTestUrl)
+            {
+                FString CookieHeader = pResponse->GetHeader(TEXT("Set-Cookie"));
+                QueryDataFromSpaceTrack(CookieHeader, uriQuery);
+            }
+            else
+            {
+                ProcessSpaceTrackResponse(pResponse->GetContentAsString());
+            }
+            
         }
         else {
             switch (pRequest->GetStatus()) {
@@ -128,6 +151,40 @@ void ADebrisActor::LoginWithSpaceTrack(const FString& NewObjectId, const FString
     UE_LOG(LogTemp, Log, TEXT("Space-Track request: %s; content:%s"), *uriLogin, *RequestContent);
 
     pRequest->ProcessRequest();
+}
+
+void ADebrisActor::QueryDataFromSpaceTrack(FString CookieHeader, FString uriQuery)
+{
+    FHttpModule& httpModule = FHttpModule::Get();
+
+    // Create an http request
+    // The request will execute asynchronously, and call us back on the Lambda below
+    TSharedRef<IHttpRequest, ESPMode::ThreadSafe> pRequest = httpModule.CreateRequest();
+    pRequest->SetVerb(TEXT("GET"));
+    pRequest->SetHeader(TEXT("Content-Type"), TEXT("application/x-www-form-urlencoded"));
+    pRequest->SetHeader(TEXT("Cookie"), CookieHeader);
+    pRequest->SetURL(uriQuery);
+    pRequest->OnProcessRequestComplete().BindLambda(
+        [&](
+            FHttpRequestPtr pRequest,
+            FHttpResponsePtr pResponse,
+            bool connectedSuccessfully) mutable {
+                if (connectedSuccessfully) {
+                    UE_LOG(LogTemp, Log, TEXT("Space-Track response: %s"), *(pResponse->GetContentAsString().Left(64)));
+                    ProcessSpaceTrackResponse(pResponse->GetContentAsString());
+                }
+                else {
+                    switch (pRequest->GetStatus()) {
+                    case EHttpRequestStatus::Failed_ConnectionError:
+                        UE_LOG(LogTemp, Error, TEXT("Connection failed."));
+                    default:
+                        UE_LOG(LogTemp, Error, TEXT("Request failed."));
+                    }
+                }
+        }
+    );
+    pRequest->ProcessRequest();
+    UE_LOG(LogTemp, Log, TEXT("Space-Track request: %s; "), *uriQuery);
 }
 
 void ADebrisActor::ProcessSpaceTrackResponse(const FString& ResponseContent)
@@ -307,13 +364,18 @@ void ADebrisActor::Tick(float DeltaTime)
     FSTLEGeophysicalConstants earth;
     USpice::getgeophs(earth, TEXT("EARTH"));
 
+    TArray<FTransform> NewDebrisTransforms;
+
     for (int i = 0; i < DebrisElements.Num(); ++i)
     {
         FTransform t;
         t.SetLocation(LocationFromTLE(now, earth, DebrisElements[i]));
         t.SetScale3D(FVector(ObjectScale));
         // In an actual app, we'd update the instances as a batch -- of course...
-        InstancedMesh->UpdateInstanceTransform(i, t, false, i == DebrisElements.Num() -1);
+		NewDebrisTransforms.Add(t);
     }
+
+
+    InstancedMesh->BatchUpdateInstancesTransforms(0, NewDebrisTransforms, false, true, false);
 }
 
